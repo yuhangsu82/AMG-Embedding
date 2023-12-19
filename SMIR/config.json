@@ -1,0 +1,11 @@
+{
+  "batch_size": 400,
+  "epochs": 30,
+  "lr": 1e-3,
+  "last_lr":5e-5,
+  "model": "mcnn",
+  "loss": "arcface",
+  "alpha": 0.5,
+  "class_nums": 20000,
+  "emd_size": 128
+}
