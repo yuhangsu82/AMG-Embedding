@@ -1,4 +1,4 @@
-"""
+'''
 This tip describes how to create a search database and complete the search.
  ----------------------------------------------------------------------
     FAISS index setup
@@ -17,9 +17,8 @@ This tip describes how to create a search database and complete the search.
                                        [q0,  q1,  q2,  q3,  q4]
 
     • The set of ground truth IDs for q[i] will be (i + len(dummy_db))
-
     ---------------------------------------------------------------------- 
-"""
+'''
 
 
 import argparse
@@ -41,6 +40,8 @@ from prettytable import PrettyTable
 import pickle
 from dataset import SpectrogramFingerprintData
 from models import MCNN, MLSTM, MT
+import math
+from collections import defaultdict
 
 
 FILE = Path(__file__).resolve()
@@ -50,15 +51,13 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 
-def init_model(model_type, feature_dim, is_residual, device):
+def init_model(model_type, feature_dim, device):
     if model_type == 'mt':
-        model = MT(128, feature_dim, 256, 10, 8, 0.1, is_residual).to(device)
+        model = MT(feature_dim, feature_dim, 256, 10, 8, 0.1).to(device)
     elif model_type == 'mlstm':
-        model = MLSTM(128, feature_dim, 256, 8, 0.1, is_residual).to(device)
+        model = MLSTM(feature_dim, feature_dim, 256, 8, 0.1).to(device)
     elif model_type == 'mcnn':
-        model = MCNN(feature_dim, is_residual).to(device)
-    else:
-        raise Exception('No such model! (Tip: You can fix the code and add your own model in this project.)')
+        model = MCNN(feature_dim).to(device)
 
     return model
 
@@ -86,147 +85,142 @@ def generate_feature(
 
 
 def create_index(
-    emb_dummy_dir, emb_dir, max_len, batch_size, feature_dim, device, model
+    emb_dummy_dir, emb_dir, max_len, duration_max, batch_size, feature_dim, device, model
 ):
     db_data = SpectrogramFingerprintData(
         files=os.listdir(emb_dummy_dir),
         root_dir=emb_dummy_dir,
         max_len=max_len,
-        seq_len=max_len,
-        start_id=0,
+        seq_len=2 * duration_max - 1,
+        start_id=[0 for _ in range(len(os.listdir(emb_dummy_dir)))],
         feature_dim=feature_dim,
         mode='test',
     )
     db_data = Data.DataLoader(db_data, shuffle=False, batch_size=batch_size)
+
     dummy_db = generate_feature(
         db_data, emb_dummy_dir, feature_dim, device, batch_size, model, 'db'
     )
     dummy_db_shape = np.load(str(emb_dummy_dir) + '_shape.npy')
+    # dummy_db = np.memmap(
+    #     str(emb_dummy_dir) + '.mm',
+    #     dtype='float32',
+    #     mode='r',
+    #     shape=(dummy_db_shape[0], feature_dim),
+    # )
 
     query_db_data = SpectrogramFingerprintData(
-        files=os.listdir(os.path.join(emb_dir, 'db')),
-        root_dir=os.path.join(emb_dir, 'db'),
+        files=os.listdir(os.path.join(emb_dir, f'db/test_{duration_max}s')),
+        root_dir=os.path.join(emb_dir, f'db/test_{duration_max}s'),
         max_len=max_len,
-        seq_len=max_len,
-        start_id=0,
+        seq_len=2 * duration_max - 1,
+        start_id=[0 for _ in range(len(os.listdir(os.path.join(emb_dir, f'db/test_{duration_max}s'))))],
         feature_dim=feature_dim,
         mode='test',
     )
     query_db_data = Data.DataLoader(query_db_data, shuffle=False, batch_size=batch_size)
     query_db = generate_feature(
         query_db_data,
-        os.path.join(emb_dir, 'db'),
+        os.path.join(emb_dir, f'db/test_{duration_max}s'),
         feature_dim,
         device,
         batch_size,
         model,
         'db',
     )
-    query_db_shape = np.load(os.path.join(emb_dir, 'db') + '_shape.npy')
-
-    fake_recon_index = np.memmap(
-        ROOT / 'database/merge_db.mm',
-        dtype='float32',
-        mode='w+',
-        shape=(dummy_db_shape[0] + query_db_shape[0], feature_dim),
-    )
-    fake_recon_index[: dummy_db_shape[0], :] = dummy_db[:, :]
-    fake_recon_index[
-        dummy_db_shape[0] : dummy_db_shape[0] + query_db_shape[0], :
-    ] = query_db[:, :]
     index = faiss.IndexFlatIP(feature_dim)
-    index.add(fake_recon_index)
-    fake_recon_index.flush()
-    del fake_recon_index, query_db, dummy_db
-    os.remove(ROOT / 'database/merge_db.mm')
-    faiss.write_index(index, str(emb_dummy_dir) + '.index')
-    # index = faiss.read_index(emb_dummy_dir.as_posix() +'.index')
+    index.add(dummy_db)
+    index.add(query_db)
+    del query_db, dummy_db
 
-    return dummy_db_shape, query_db_shape, index
+    return dummy_db_shape, index
 
 
 def eval(
     emb_dir,
     emb_dummy_dir,
     model_type,
-    is_residual,
     checkpoint_path,
-    max_len,
+    duration_max,
     device,
     batch_size,
     feature_dim,
     k_prob,
 ):
-    model = init_model(model_type, feature_dim, is_residual, device)
+    model = init_model(model_type, feature_dim, device)
     if torch.cuda.is_available() and 'cuda' in device:
         device = torch.device(device)
     else:
         device = torch.device('cpu')
 
-    checkpoint = torch.load(checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint['model'])
 
-    dummy_db_shape, query_shape, index = create_index(
-        emb_dummy_dir, emb_dir, max_len, batch_size, feature_dim, device, model
-    )
-    test_ids_dict = pickle.load(open(os.path.join(emb_dir, 'test_ids.pickle'), 'rb'))
+    duration_map = {5: 12, 10: 24, 15: 32, 30: 64}
+    max_len = duration_map[duration_max]
     top1 = list()
     top10 = list()
-    id_nums = len(test_ids_dict[next(iter(test_ids_dict))])
-    pbar = tqdm(
-        total=len(test_ids_dict.keys()) * id_nums * query_shape[0], desc='Searching'
-    )
-    table = PrettyTable()
+    dummy_db_shape, index = create_index(emb_dummy_dir, emb_dir, max_len, duration_max, batch_size, feature_dim, device, model)
+    with open(ROOT / 'runs/retrieval/test_ids_sigir2024.pkl', 'rb') as file:
+        test_data = pickle.load(file)
+    test_ids_dict = test_data[duration_max]
     test_seq_len = list(test_ids_dict.keys())
-    table.field_names = ['segments'] + test_seq_len
+    seconds_len = 2 * duration_max - 1
 
-    for seg_len in test_seq_len:
-        top1_correct = list()
-        top10_correct = list()
+    for seg_len in tqdm(test_seq_len, desc="Searching"):
+        query_dir = os.path.join(emb_dir, 'query')
+        query_files = os.listdir(query_dir)
+        correct_num_1 = 0
+        correct_num_10 = 0
         for id in test_ids_dict[seg_len]:
-            query_data = SpectrogramFingerprintData(
-                files=os.listdir(os.path.join(emb_dir, 'tr-aug')),
-                root_dir=os.path.join(emb_dir, 'tr-aug'),
-                max_len=max_len,
-                seq_len=seg_len,
-                start_id=id,
-                feature_dim=feature_dim,
-                mode='test',
-            )
-            query_data = Data.DataLoader(
-                query_data, shuffle=False, batch_size=batch_size
-            )
-            query = generate_feature(
-                query_data,
-                os.path.join(emb_dir, 'tr-aug'),
-                feature_dim,
-                device,
-                batch_size,
-                model,
-            )
-            correct_num_1 = 0
-            correct_num_10 = 0
-            for ti in range(query_shape[0]):
-                get_id = ti + dummy_db_shape[0]
-                q = np.zeros((1, feature_dim))
-                q[0] = query[ti]
-                D, I = index.search(q, k_prob)
-                if get_id == I[0][0]:
+            scores = [defaultdict(int) for _ in range(len(query_files))]
+            for si in range(math.ceil(seg_len/seconds_len)):
+                if si == seg_len//seconds_len:
+                    query_len = seg_len%seconds_len
+                else:
+                    query_len = seconds_len
+                if query_len < 3:
+                    continue
+                query_data = SpectrogramFingerprintData(
+                    files=query_files,
+                    root_dir=query_dir,
+                    max_len=max_len,
+                    seq_len=query_len,
+                    start_id=[id + si * seconds_len for _ in range(len(query_files))],
+                    feature_dim=feature_dim,
+                    mode='test',
+                )
+                query_data = Data.DataLoader(query_data, shuffle=False, batch_size=batch_size)
+                query = generate_feature(
+                    query_data,
+                    query_dir,
+                    feature_dim,
+                    device,
+                    batch_size,
+                    model,
+                )
+                D, I = index.search(query, k_prob)
+                for ti in range(len(query_files)):
+                    for ki in range(k_prob):
+                        idx = I[ti][ki] - si
+                        if idx >= 0:
+                            scores[ti][idx] += D[ti][ki]
+                del query
+
+            for qi in range(len(query_files)):
+                get_id = qi * (math.floor(59 / seconds_len)) + (math.floor(id / seconds_len)) + dummy_db_shape[0]
+                top_10_ids = sorted(scores[qi], key=scores[qi].get, reverse=True)[:10]
+                if get_id == top_10_ids[0] or get_id + 1 == top_10_ids[0]:
                     correct_num_1 += 1
                     correct_num_10 += 1
-                elif get_id in I[0]:
+                elif get_id in top_10_ids or get_id + 1 in top_10_ids:
                     correct_num_10 += 1
+        
+        top1.append(100.0 * correct_num_1 / len(query_files) / len(test_ids_dict[seg_len]))
+        top10.append(100.0 * correct_num_10 / len(query_files) / len(test_ids_dict[seg_len]))
 
-                pbar.update(1)
-
-            top1_correct.append(correct_num_1)
-            top10_correct.append(correct_num_10)
-            del query
-
-        top1.append(100.0 * sum(top1_correct) / (len(top1_correct) * query_shape[0]))
-        top10.append(100.0 * sum(top10_correct) / (len(top10_correct) * query_shape[0]))
-
-    pbar.close()
+    table = PrettyTable()
+    table.field_names = ['segments'] + test_seq_len
     table.add_row(['Top1'] + top1)
     table.add_row(['Top10'] + top10)
     table.align = 'r'
@@ -234,33 +228,30 @@ def eval(
 
     return table.get_string()
 
-
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--checkpoint_path', type=str, default=ROOT / 'runs/checkpoint/mt_tam/exp-2w-s=32/mt_test_50.pth')
-    parser.add_argument('--emb_dir', type=str, default=ROOT / 'runs/retrieval/test_15')
-    parser.add_argument('--emb_dummy_dir', type=str, default=ROOT / 'database/fma_full_15s')
-    parser.add_argument('--model_type', type=str, default='mt')
-    parser.add_argument('--is_residual', type=bool, default=False)
-    parser.add_argument('--max_len', type=int, default=32)
-    parser.add_argument('--device', type=str, default='cuda:0')
-    parser.add_argument('--batch_size', type=int, default=2400)
-    parser.add_argument('--feature_dim', type=int, default=128)
-    parser.add_argument('--k_prob', type=int, default=10)
+    parser.add_argument('--checkpoint_path', type=str, default=ROOT / 'runs/checkpoint/mt_pam/exp-10s/mt_50.pth', help='Path to the model checkpoint to be loaded')
+    parser.add_argument('--emb_dir', type=str, default=ROOT / 'runs/retrieval', help='Directory for the embeddings')
+    parser.add_argument('--emb_dummy_dir', type=str, default=ROOT / 'database/fma_full_10s', help='Directory for the dummy embeddings')
+    parser.add_argument('--model_type', choices=['mcnn', 'mlstm', 'mt'], default='mt', help='Type of the model to be used')
+    parser.add_argument('--duration_max', choices=[5, 10, 15, 30], default=10, help='Maximum duration of the audio clips')
+    parser.add_argument('--device', type=str, default='cuda:0', help='Device to be used for computation (e.g., cuda:0)')
+    parser.add_argument('--batch_size', type=int, default=1200, help='Batch size for processing')
+    parser.add_argument('--feature_dim', type=int, default=128, help='Dimension of the feature vectors')
+    parser.add_argument('--k_prob', type=int, default=10, help='Parameter for the K-probability')
 
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     opt = parse_opt()
 
     table_string = eval(
         emb_dir=opt.emb_dir,
         emb_dummy_dir=opt.emb_dummy_dir,
         model_type=opt.model_type,
-        is_residual=opt.is_residual,
         checkpoint_path=opt.checkpoint_path,
-        max_len=opt.max_len,
+        duration_max=opt.duration_max,
         device=opt.device,
         batch_size=opt.batch_size,
         feature_dim=opt.feature_dim,
