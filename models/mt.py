@@ -2,7 +2,7 @@ import torch
 from torch.nn import functional as F
 from torch import nn
 from torch import Tensor
-from typing import Optional
+import time
 
 
 class MT(nn.Module):
@@ -14,15 +14,12 @@ class MT(nn.Module):
         depth=10,
         heads=8,
         dropout=0.1,
-        is_residual=False,
     ):
   
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.dim = dim
-        self.is_residual = is_residual
-        self.relu = nn.ReLU()
         self.linear1 = nn.Linear(input_dim, dim)
         self.encoder_layer = nn.TransformerEncoderLayer(
             d_model=dim,
@@ -47,7 +44,7 @@ class MT(nn.Module):
 
 
     def forward(self, x, padding_mask=None) -> Tensor:
-        x_out = self.relu(self.linear1(x))
+        x_out = self.linear1(x)
 
         if padding_mask is not None:
             x_out = self.encoder(x_out, src_key_padding_mask=padding_mask)
@@ -56,11 +53,6 @@ class MT(nn.Module):
 
         x_out = self.mask_pooling(x_out, padding_mask)
         x_out = self.linear2(x_out)
-
-        if self.is_residual == True:
-            if self.input_dim != self.output_dim:
-                raise Exception("Residual can only used when input_dim == output_dim!")
-            x_out = x_out + self.mask_pooling(x, padding_mask)
         x_out = self.l2_norm(x_out)
 
         return x_out
@@ -76,7 +68,6 @@ if __name__ == "__main__":
         dropout=0.1,
     ).cuda()
 
-    src_padding_mask = torch.tensor(
-        [[0, 0, 1, 1, 1], [0, 0, 0, 1, 1]], dtype=torch.bool
-    ).cuda()
-    print(model(torch.rand(2, 5, 128).cuda(), src_padding_mask).shape)
+    src_padding_mask = torch.zeros((15000, 64), dtype = bool).cuda()
+    x = torch.randn(15000, 64, 128).cuda()
+    print(model(x, src_padding_mask).shape)
