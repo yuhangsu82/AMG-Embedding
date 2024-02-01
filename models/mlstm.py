@@ -14,7 +14,6 @@ class MLSTM(nn.Module):
         hidden_dim=256,
         num_layers=6,
         dropout=0.1,
-        is_residual=False,
     ):
 
         super().__init__()
@@ -23,23 +22,12 @@ class MLSTM(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.dropout = dropout
-        self.is_residual = is_residual
 
         self.lstm = nn.LSTM(
-            input_dim, hidden_dim, num_layers, dropout=self.dropout, batch_first=True
+            input_dim, hidden_dim, num_layers, dropout=self.dropout, batch_first=True, bidirectional=True
         )
-        self.fc = nn.Linear(self.hidden_dim, self.output_dim)
+        self.fc = nn.Linear(self.hidden_dim * 2, self.output_dim)
         self.l2_norm = F.normalize
-
-
-    def mask_pooling(self, x, mask=None):
-        if mask is None:
-            mask = torch.zeros_like(x, dtype=torch.bool)
-        masked_x = torch.mul(x, (~mask).unsqueeze(-1))
-        sum_x = torch.sum(masked_x, dim=1)
-        avg_x = sum_x / (torch.sum(~mask, dim=1).unsqueeze(-1))
-
-        return avg_x
 
 
     def forward(self, x, padding_mask=None) -> Tensor:
@@ -57,11 +45,6 @@ class MLSTM(nn.Module):
         last_seq_index = lengths.to(x.device) - 1
         last_output = output[torch.arange(x.shape[0]), last_seq_index]
         x_out = self.fc(last_output)
-
-        if self.is_residual == True:
-            if self.input_dim != self.output_dim:
-                raise Exception("Residual can only used when input_dim == output_dim!")
-            x_out = x_out + self.mask_pooling(x, padding_mask)
         x_out = self.l2_norm(x_out)
 
         return x_out
