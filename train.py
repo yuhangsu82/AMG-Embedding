@@ -15,7 +15,7 @@ import pandas as pd
 from torchvision import transforms
 from tqdm import tqdm
 import logging
-from losses import InfoNCELoss, TripletLoss, ArcFaceLoss, TamLoss
+from losses import InfoNCELoss, TripletLoss, ArcFaceLoss, PamLoss
 from dataset import SpectrogramFingerprintData
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import yaml
@@ -29,13 +29,13 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 
-def init_model(model_type, feature_dim, is_residual, device):
+def init_model(model_type, feature_dim, device):
     if model_type == 'mt':
-        model = MT(128, feature_dim, 256, 10, 8, 0.1, is_residual).to(device)
+        model = MT(128, feature_dim, 256, 10, 8, 0.1).to(device)
     elif model_type == 'mlstm':
-        model = MLSTM(128, feature_dim, 256, 8, 0.1, is_residual).to(device)
+        model = MLSTM(128, feature_dim, 256, 8, 0.1).to(device)
     elif model_type == 'mcnn':
-        model = MCNN(feature_dim, is_residual).to(device)
+        model = MCNN(feature_dim).to(device)
     else:
         raise Exception('No such model! (Tip: You can fix the code and add your own model in this project.)')
 
@@ -43,16 +43,14 @@ def init_model(model_type, feature_dim, is_residual, device):
 
 
 def init_loss(loss_name, feature_dim, class_nums):
-    if loss_name == 'Tam':
-        loss_fc = TamLoss(in_features=feature_dim, out_features=class_nums, s=32.0).to(opt.device)
+    if loss_name == 'Pam':
+        loss_fc = PamLoss(in_features=feature_dim, out_features=class_nums, s=32.0).to(opt.device)
     elif loss_name == 'Arcface':
         loss_fc = ArcFaceLoss(in_features=feature_dim, out_features=class_nums, s=32.0).to(opt.device)
     elif loss_name == 'InfoNCE':
         loss_fc = InfoNCELoss().to(opt.device)
     elif loss_name == 'Triplet':
         loss_fc = TripletLoss(alpha=0.2).to(opt.device)
-    else:
-        raise Exception('No such loss function!')
 
     return loss_fc
 
@@ -94,7 +92,7 @@ def train(model, train_data, optimizer, scheduler, epoch, device, logger, loss_f
     pbar_train = tqdm(train_data, total=train_nb)
 
     for step, data in enumerate(pbar_train):
-        if loss_fc.loss_name == 'Tam':
+        if loss_fc.loss_name == 'Pam':
             sequence, label, margin, is_anchor, padding_mask = data
             sequence = sequence.to(device)
             label = label.to(device)
@@ -175,36 +173,38 @@ def train(model, train_data, optimizer, scheduler, epoch, device, logger, loss_f
     return loss_avg
 
 
-def init_class_center(loss):
+def init_class_center(loss, max_len):
     center = np.zeros((opt.class_nums, opt.feature_dim), dtype=np.float32)
     for i in range(1, opt.class_nums + 1):
         data = np.load(os.path.join(opt.dataset_dir, f"{i}-00.npy"))
-        center[i-1] = np.mean(data, axis=0)
-    t_c = torch.from_numpy(center).float().cuda()
+        mid_start = max((len(data) - max_len) // 2, 0)
+        center[i-1] = np.mean(data[mid_start: mid_start + min(max_len, len(data))], axis=0)
+    t_c = torch.from_numpy(center).float().to(opt.device)
     with torch.no_grad():
         loss.weight.data = t_c
+    
+    print("init class center...")
 
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_dir', type=str, default=ROOT / 'datasets/mt/train/data-10w')
-    parser.add_argument('--test_dir', type=str, default=ROOT / 'runs/retrieval/test')
-    parser.add_argument('--test_dummy_dir', type=str, default=ROOT / 'database/fma_part_30s')
-    parser.add_argument('--model', type=str, default='mt')
-    parser.add_argument('--device', type=str, default='cuda:0')
-    parser.add_argument('--is_residual', type=bool, default=True)
-    parser.add_argument('--lr', type=float, default=0.0001)
-    parser.add_argument('--last_lr', type=float, default=0.00001)
-    parser.add_argument('--epochs', type=int, default=50)
-    parser.add_argument('--batch_size', type=int, default=320)
-    parser.add_argument('--class_nums', type=int, default=20000)
-    parser.add_argument('--sample_nums', type=int, default=10)  
-    parser.add_argument('--max_len', type=int, default=64)
-    parser.add_argument('--seq_len', type=int, default=64)
-    parser.add_argument('--start_id', type=int, default=0)
-    parser.add_argument('--loss', type=str, default='Tam')
-    parser.add_argument('--feature_dim', type=int, default=128)
-    parser.add_argument('--weight_decay', type=float, default=1e-5)
+    parser.add_argument('--dataset_dir', type=str, default=ROOT / 'datasets/train/data-10w', help='Directory of the training dataset')
+    parser.add_argument('--test_dir', type=str, default=ROOT / 'runs/retrieval', help='Directory of the test dataset')
+    parser.add_argument('--test_dummy_dir', type=str, default=ROOT / 'database/fma_part_10s', help='Directory of the dummy test dataset')
+    parser.add_argument('--model', choices=['mcnn', 'mlstm', 'mt'], default='mt', help='Model type to use for training')
+    parser.add_argument('--device', type=str, default='cuda:0', help='Device to use for training (e.g., cuda:0)')
+    parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate')
+    parser.add_argument('--last_lr', type=float, default=0.0001, help='Final learning rate')
+    parser.add_argument('--epochs', type=int, default=50, help='Number of epochs to train')
+    parser.add_argument('--batch_size', type=int, default=1280, help='Batch size for training')
+    parser.add_argument('--class_nums', type=int, default=20000, help='Number of classes in the dataset')
+    parser.add_argument('--sample_nums', type=int, default=10, help='Number of samples per class')
+    parser.add_argument('--duration_max', choices=[5, 10, 15, 30], default=10, help='Maximum duration of the audio clips')
+    parser.add_argument('--loss', choices=['Triplet', 'InfoNCE', 'Arcface', 'Pam'], default='Pam', help='Loss function to use for training')
+    parser.add_argument('--mu', type=float, default=0.4, help='Upper of the angular margin parameter for loss function')
+    parser.add_argument('--ml', type=float, default=0.2, help='Lower of the angular margin parameter for loss function')
+    parser.add_argument('--feature_dim', type=int, default=128, help='Dimension of the feature vectors')
+    parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for the optimizer')
 
     return parser.parse_args()
 
@@ -216,24 +216,26 @@ if __name__ == "__main__":
     else:
         device = torch.device('cpu')
 
-    model = init_model(opt.model, opt.feature_dim, opt.is_residual, opt.device)
+    model = init_model(opt.model, opt.feature_dim, opt.device)
     logger = get_logger()
-    ckpt_dir = f'./runs/checkpoint/{opt.model}_{opt.loss.lower()}/exp'
+    ckpt_dir = ROOT / f'runs/checkpoint/{opt.model}_{opt.loss.lower()}/exp'
     if os.path.exists(ckpt_dir) is False:
         os.makedirs(ckpt_dir)
     
     ckpt_file_path = os.path.join(ckpt_dir, 'last.pth')
     train_files = load_file(opt.dataset_dir, opt.class_nums, opt.sample_nums)
+    duration_map = {5: 12, 10: 24, 15: 32, 30: 64}
+    max_len = duration_map[opt.duration_max]
 
     train_data = SpectrogramFingerprintData(
         files=train_files,
         root_dir=opt.dataset_dir,
-        max_len=opt.max_len,
-        seq_len=opt.seq_len,
-        start_id=opt.start_id,
+        max_len=max_len,
         feature_dim=opt.feature_dim,
         class_nums=opt.class_nums,
         mode='train-' + opt.loss.lower(),
+        mu=opt.mu,
+        ml=opt.ml,
     )
 
     train_data = Data.DataLoader(train_data, shuffle=True, batch_size=opt.batch_size)
@@ -242,7 +244,7 @@ if __name__ == "__main__":
     scheduler = CosineAnnealingLR(optimizer, T_max=opt.epochs * len(train_data), eta_min=opt.last_lr)
 
     if os.path.exists(ckpt_file_path):
-        checkpoint = torch.load(ckpt_file_path)
+        checkpoint = torch.load(ckpt_file_path, map_location=device)
         model.load_state_dict(checkpoint['model'])
         loss_fc.load_state_dict(checkpoint['loss'])
         optimizer.load_state_dict(checkpoint['optimizer'])
@@ -259,8 +261,8 @@ if __name__ == "__main__":
         start_epoch = 0
 
     for epoch in range(start_epoch + 1, opt.epochs + 1):
-        if epoch == 1 and (opt.loss == 'Tam' or opt.loss == 'Arcface'):
-            init_class_center(loss_fc)
+        if epoch == 1 and (opt.loss == 'Pam' or opt.loss == 'Arcface'):
+            init_class_center(loss_fc, max_len)
 
         train_loss = train(
             model=model,
@@ -290,18 +292,17 @@ if __name__ == "__main__":
             'scheduler': scheduler.state_dict(),
             'epoch': epoch,
         }
-        if epoch % 10 == 0:
+        if epoch % 5 == 0:
             print('epoch: ', epoch)
             table_string = eval(
                 emb_dir=opt.test_dir,
                 emb_dummy_dir=opt.test_dummy_dir,
                 model_type=opt.model,
-                is_residual=opt.is_residual,
                 checkpoint_path=ckpt_file_path,
-                max_len=opt.max_len,
-                device='cuda:0',
-                batch_size=1500,
-                feature_dim=128,
+                duration_max = opt.duration_max,
+                device=opt.device,
+                batch_size=opt.batch_size,
+                feature_dim=opt.feature_dim,
                 k_prob=10,
             )
             with open(os.path.join(ckpt_dir, 'table.txt'), 'a') as file:
@@ -311,5 +312,3 @@ if __name__ == "__main__":
             torch.save(state, os.path.join(ckpt_dir, f'{opt.model}_{epoch}.pth').format(epoch))
 
         torch.save(state, ckpt_file_path)
-        # torch.save(state, os.path.join(ckpt_dir, f'{opt.model}_{epoch}.pth').format(epoch))
-
