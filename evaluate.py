@@ -195,7 +195,7 @@ def eval(
     dummy_db_shape, index, index_path_dict = create_direct_index(emb_dummy_dir, emb_dir, max_len, duration_max, batch_size, feature_dim, device, model)
     query_dir = os.path.join(emb_dir, 'query')
     query_files = os.listdir(query_dir)
-    with open(ROOT / 'runs/retrieval/test_ids_sigir2024.pkl', 'rb') as file:
+    with open(ROOT / 'database/test_ids_sigir2024.pkl', 'rb') as file:
         test_data = pickle.load(file)
     test_ids_dict = test_data[duration_max]
     test_seq_len = list(test_ids_dict.keys())
