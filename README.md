@@ -2,7 +2,7 @@
 
 A self-supervised method for feature extraction from audio.
 
-![image-20240314145922070](C:\Users\syh\AppData\Roaming\Typora\typora-user-images\image-20240314145922070.png)
+![image-20240314145922070](https://github.com/syh200626/AMG-Embedding/assets/83171204/6de00f03-83d8-427d-969e-187a1bbaada1)
 
 ## Dataset
 
@@ -62,7 +62,7 @@ python evaluate.py --checkpoint_path CHECKPOINT_PATH
 
 ## Build DB & Search
 
-![image-20240314164854170](C:\Users\syh\AppData\Roaming\Typora\typora-user-images\image-20240314164854170.png)
+![image-20240314164854170](https://github.com/syh200626/AMG-Embedding/assets/83171204/80242c87-3139-4b6c-83c5-76379b28c715)
 
 This image describes how to create a search database and complete the search. The set of ground truth IDs for q[i] will be (i + len(dummy_db)).
 
