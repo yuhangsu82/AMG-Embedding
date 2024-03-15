@@ -2,7 +2,7 @@
 
 A self-supervised method for feature extraction from audio.
 
-![image-20240314145922070](https://github.com/syh200626/AMG-Embedding/assets/83171204/6de00f03-83d8-427d-969e-187a1bbaada1)
+![image-20240315100451211](https://github.com/syh200626/AMG-Embedding/assets/83171204/1b76b4a1-7759-48cf-98f6-e08c14b5f9c7)
 
 ## Dataset
 
