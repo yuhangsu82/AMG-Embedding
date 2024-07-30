@@ -188,18 +188,18 @@ def init_class_center(loss, max_len):
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_dir', type=str, default=ROOT / 'datasets/train/data-10w', help='Directory of the training dataset')
-    parser.add_argument('--test_dir', type=str, default=ROOT / 'runs/retrieval', help='Directory of the test dataset')
-    parser.add_argument('--test_dummy_dir', type=str, default=ROOT / 'database/fma_part_10s', help='Directory of the dummy test dataset')
+    parser.add_argument('--dataset_dir', type=str, default=ROOT / 'datasets/train/data-1k', help='Directory of the training dataset')
+    parser.add_argument('--test_dir', type=str, default=ROOT / 'database', help='Directory of the test dataset')
+    parser.add_argument('--test_dummy_dir', type=str, default=ROOT / 'database/dummy_db/fma_part_30s', help='Directory of the dummy test dataset')
     parser.add_argument('--model', choices=['mcnn', 'mlstm', 'mt'], default='mt', help='Model type to use for training')
     parser.add_argument('--device', type=str, default='cuda:0', help='Device to use for training (e.g., cuda:0)')
     parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate')
     parser.add_argument('--last_lr', type=float, default=0.0001, help='Final learning rate')
     parser.add_argument('--epochs', type=int, default=50, help='Number of epochs to train')
-    parser.add_argument('--batch_size', type=int, default=1280, help='Batch size for training')
-    parser.add_argument('--class_nums', type=int, default=20000, help='Number of classes in the dataset')
+    parser.add_argument('--batch_size', type=int, default=640, help='Batch size for training')
+    parser.add_argument('--class_nums', type=int, default=1000, help='Number of classes in the dataset')
     parser.add_argument('--sample_nums', type=int, default=10, help='Number of samples per class')
-    parser.add_argument('--duration_max', choices=[5, 10, 15, 30], default=10, help='Maximum duration of the audio clips')
+    parser.add_argument('--duration_max', choices=[5, 10, 15, 30], default=30, help='Maximum duration of the audio clips')
     parser.add_argument('--loss', choices=['Triplet', 'InfoNCE', 'Arcface', 'Pam'], default='Pam', help='Loss function to use for training')
     parser.add_argument('--mu', type=float, default=0.4, help='Upper of the angular margin parameter for loss function')
     parser.add_argument('--ml', type=float, default=0.2, help='Lower of the angular margin parameter for loss function')
@@ -304,6 +304,7 @@ if __name__ == "__main__":
                 batch_size=opt.batch_size,
                 feature_dim=opt.feature_dim,
                 k_prob=10,
+                mode='single_stage'
             )
             with open(os.path.join(ckpt_dir, 'table.txt'), 'a') as file:
                 file.write(f'epoch: {epoch}\n')
