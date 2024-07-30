@@ -97,30 +97,31 @@ def calculate_steps(test_ids_dict, query_num):
 def create_direct_index(
     emb_dummy_dir, emb_dir, max_len, duration_max, batch_size, feature_dim, device, model
 ):
-    # db_data = SpectrogramFingerprintData(
-    #     files=os.listdir(emb_dummy_dir),
-    #     root_dir=emb_dummy_dir,
-    #     max_len=max_len,
-    #     seq_len=2 * duration_max - 1,
-    #     start_id=[0 for _ in range(len(os.listdir(emb_dummy_dir)))],
-    #     feature_dim=feature_dim,
-    #     mode='test',
-    # )
-    # db_data = Data.DataLoader(db_data, shuffle=False, batch_size=batch_size)
-
-    # dummy_db = generate_feature(
-    #     db_data, emb_dummy_dir, feature_dim, device, batch_size, model, 'db'
-    # )
-    dummy_db_shape = np.load(str(emb_dummy_dir) + '_shape.npy')
-    dummy_db = np.memmap(
-        str(emb_dummy_dir) + '.mm',
-        dtype='float32',
-        mode='r',
-        shape=(dummy_db_shape[0], feature_dim),
+    db_data = SpectrogramFingerprintData(
+        files=os.listdir(emb_dummy_dir),
+        root_dir=emb_dummy_dir,
+        max_len=max_len,
+        seq_len=2 * duration_max - 1,
+        start_id=[0 for _ in range(len(os.listdir(emb_dummy_dir)))],
+        feature_dim=feature_dim,
+        mode='test',
     )
+    db_data = Data.DataLoader(db_data, shuffle=False, batch_size=batch_size)
 
+    dummy_db = generate_feature(
+        db_data, emb_dummy_dir, feature_dim, device, batch_size, model, 'db'
+    )
+    dummy_db_shape = np.load(str(emb_dummy_dir) + '_shape.npy')
+    # dummy_db = np.memmap(
+    #     str(emb_dummy_dir) + '.mm',
+    #     dtype='float32',
+    #     mode='r',
+    #     shape=(dummy_db_shape[0], feature_dim),
+    # )
+
+    query_db_files = sorted(os.listdir(os.path.join(emb_dir, f'db/test_{duration_max}s')))
     query_db_data = SpectrogramFingerprintData(
-        files=os.listdir(os.path.join(emb_dir, f'db/test_{duration_max}s')),
+        files=query_db_files,
         root_dir=os.path.join(emb_dir, f'db/test_{duration_max}s'),
         max_len=max_len,
         seq_len=2 * duration_max - 1,
@@ -145,11 +146,11 @@ def create_direct_index(
     index_path_dict = dict()
     for fi, filename in enumerate(os.listdir(emb_dummy_dir)):
         index_path_dict[fi] = os.path.join(emb_dummy_dir, filename)
-    for fi, filename in enumerate(os.listdir(os.path.join(emb_dir, f'db/test_{duration_max}s'))):
+    for fi, filename in enumerate(query_db_files):
         index_path_dict[fi + dummy_db_shape[0]] = os.path.join(emb_dir, f'db/test_{duration_max}s', filename)
 
     return dummy_db_shape, index, index_path_dict
-    
+
 
 def create_two_stage_index(top10_candidates, index_path_dict, duration_max, feature_dim):
     seconds_len = 2 * duration_max - 1
@@ -194,8 +195,8 @@ def eval(
     top10 = list()
     dummy_db_shape, index, index_path_dict = create_direct_index(emb_dummy_dir, emb_dir, max_len, duration_max, batch_size, feature_dim, device, model)
     query_dir = os.path.join(emb_dir, 'query')
-    query_files = os.listdir(query_dir)
-    with open(ROOT / 'database/test_ids_sigir2024.pkl', 'rb') as file:
+    query_files = sorted(os.listdir(query_dir))
+    with open(ROOT / 'database/test_ids_acm_mm2024.pkl', 'rb') as file:
         test_data = pickle.load(file)
     test_ids_dict = test_data[duration_max]
     test_seq_len = list(test_ids_dict.keys())
@@ -350,16 +351,16 @@ def eval(
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--checkpoint_path', type=str, default=ROOT / 'runs/checkpoint/mt_pam/exp-15s/mt_50.pth', help='Path to the model checkpoint to be loaded')
+    parser.add_argument('--checkpoint_path', type=str, default=ROOT / 'runs/checkpoint/mt_pam/exp-10s/mt_50.pth', help='Path to the model checkpoint to be loaded')
     parser.add_argument('--emb_dir', type=str, default=ROOT / 'database', help='Directory for the embeddings')
-    parser.add_argument('--emb_dummy_dir', type=str, default=ROOT / 'database/dummy_db/fma_full_15s', help='Directory for the dummy embeddings')
+    parser.add_argument('--emb_dummy_dir', type=str, default=ROOT / 'database/dummy_db/fma_full_10s', help='Directory for the dummy embeddings')
     parser.add_argument('--model_type', choices=['mcnn', 'mlstm', 'mt'], default='mt', help='Type of the model to be used')
-    parser.add_argument('--duration_max', choices=[5, 10, 15, 30], default=15, help='Maximum duration of the audio clips')
+    parser.add_argument('--duration_max', choices=[5, 10, 15, 30], default=10, help='Maximum duration of the audio clips')
     parser.add_argument('--device', type=str, default='cuda:0', help='Device to be used for computation (e.g., cuda:0)')
-    parser.add_argument('--batch_size', type=int, default=1200, help='Batch size for processing')
+    parser.add_argument('--batch_size', type=int, default=640, help='Batch size for processing')
     parser.add_argument('--feature_dim', type=int, default=128, help='Dimension of the feature vectors')
     parser.add_argument('--k_prob', type=int, default=10, help='Parameter for the K-probability')
-    parser.add_argument('--mode', choices=['single_stage', 'two_stage'], default='two_stage', help='Type of the search mode')
+    parser.add_argument('--mode', choices=['single_stage', 'two_stage'], default='single_stage', help='Type of the search mode')
 
     return parser.parse_args()
 
