@@ -28,6 +28,8 @@ data/train/data-10w/100000-09.npy
 
 We publish a dataset generated from 1K 30s audio clips with which you can try to complete the training. Download data-1k.zip from https://drive.google.com/file/d/1uR4JRk1jkYyQhxk3puTnp3wrHsAPqwdu/view?usp=drive_link and unzip to `./data/data-1k`.
 
+In addition, you can get the full training and evaluation data via Baidu Netdisk(https://pan.baidu.com/s/1oCP5Pr1LgnPQpiAML1y7Hg?pwd=c5k5), the extraction code is c5k5.
+
 ### Structure of dataset
 
 ```
