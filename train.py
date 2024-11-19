@@ -152,12 +152,8 @@ def train(model, train_data, optimizer, scheduler, epoch, device, logger, loss_f
         else:
             raise Exception('No such loss function!')
 
-        if loss_accumulation is None and loss_avg is None:
-            loss_accumulation = loss.item()
-            loss_avg = loss.item()
-        else:
-            loss_accumulation += loss.item()
-            loss_avg = loss_accumulation / (step + 1)
+        loss_accumulation += loss.item()
+        loss_avg = loss_accumulation / (step + 1)
 
         loss.backward()
         optimizer.step()
