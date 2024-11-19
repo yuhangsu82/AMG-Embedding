@@ -254,7 +254,6 @@ if __name__ == "__main__":
         df_train.to_csv(os.path.join(ckpt_dir, 'result.csv'), index=False)
         with open(os.path.join(ckpt_dir, 'config.yaml'), 'w') as file:
             yaml.dump(vars(opt), file, default_flow_style=False)
-        start_epoch = 0
 
     for epoch in range(start_epoch + 1, opt.epochs + 1):
         if epoch == 1 and (opt.loss == 'Pam' or opt.loss == 'Arcface'):
