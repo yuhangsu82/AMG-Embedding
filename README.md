@@ -87,3 +87,16 @@ This image describes how to create a search database and complete the search. Th
       
 data format:embeddings extracted by fingerprinting stage
 ```
+
+## Citation
+Please cite the following paper if you use the code or dataset provided in this repository.
+
+```bibtex
+@inproceedings{su2024amg,
+    title={AMG-Embedding: A Self-Supervised Embedding Approach for Audio Identification},
+    author={Su, Yuhang and Hu, Wei and Zhang, Fan and Xu, Qiming},
+    booktitle={Proceedings of the 32nd ACM International Conference on Multimedia},
+    pages={9544--9553},
+    year={2024}
+}
+```
