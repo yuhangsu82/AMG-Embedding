@@ -34,7 +34,6 @@ from models.mt import MT
 from torch.nn import functional as F
 import matplotlib.pyplot as plt
 import pandas as pd
-from tqdm import tqdm
 import faiss
 from prettytable import PrettyTable
 import pickle
