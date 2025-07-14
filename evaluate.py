@@ -143,7 +143,7 @@ def create_direct_index(
     del query_db, dummy_db
 
     index_path_dict = dict()
-    for fi, filename in enumerate(os.listdir(emb_dummy_dir)):
+    for fi, filename in enumerate(sorted(os.listdir(emb_dummy_dir))):
         index_path_dict[fi] = os.path.join(emb_dummy_dir, filename)
     for fi, filename in enumerate(query_db_files):
         index_path_dict[fi + dummy_db_shape[0]] = os.path.join(emb_dir, f'db/test_{duration_max}s', filename)
