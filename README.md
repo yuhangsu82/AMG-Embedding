@@ -38,6 +38,10 @@ In addition, you can get the full training and evaluation data via Baidu Netdisk
       └── data-1k     <=== 1k original clips' features and 9k augmented clips' features
 ```
 
+## Pretrained Model
+
+Pretrained model weights are available at: https://drive.google.com/file/d/1xFmKPPGiACn3sfePExDNqkmQx8Dc4mvQ/view?usp=drive_link. You can skip training and directly run evaluation using this checkpoint.
+
 ## Train
 
 ```
